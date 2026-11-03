@@ -33,14 +33,14 @@ export default function ApprovalForm({ id, totalCents, defaultName }: { id: stri
 
   return (
     <section className="flex flex-col gap-3">
-      <h2 className="text-lg font-bold">Approve this change</h2>
+      <h2 className="font-display text-2xl font-medium">Approve this change</h2>
       <label className="flex flex-col gap-1 text-sm font-semibold">
         Your full name
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
           autoComplete="name"
-          className="rounded-xl border border-line bg-white px-3 py-3 text-base font-normal outline-none focus:border-ink"
+          className="field px-3.5 py-3 text-base font-normal"
         />
       </label>
       <SignaturePad ref={pad} onChange={setHasInk} />
@@ -49,8 +49,8 @@ export default function ApprovalForm({ id, totalCents, defaultName }: { id: stri
           Clear signature
         </button>
       </div>
-      <label className="flex items-start gap-3 rounded-xl bg-paper p-3 text-sm leading-snug">
-        <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} className="mt-0.5 size-5 accent-ink" />
+      <label className="flex items-start gap-3 rounded-2xl border border-line bg-bone/50 p-4 text-sm leading-snug">
+        <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} className="mt-0.5 size-5 accent-[#1f1e1c]" />
         <span>
           I approve the additional work described above for <strong>{usd(totalCents)}</strong>, added to my original contract.
         </span>
@@ -58,7 +58,7 @@ export default function ApprovalForm({ id, totalCents, defaultName }: { id: stri
       <button
         onClick={submit}
         disabled={busy || !agree || !hasInk || name.trim().length < 2}
-        className="w-full rounded-2xl bg-ink py-4 text-lg font-bold text-paper shadow-md transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
+        className="w-full rounded-full bg-brass py-4 text-lg font-semibold text-ink shadow-[0_14px_30px_-16px_rgb(31_30_28/0.55)] transition hover:bg-[#c09a59] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
       >
         {busy ? "Saving signature & creating invoice…" : "Sign & approve"}
       </button>

@@ -1,24 +1,26 @@
 import type { Metadata, Viewport } from "next";
-import { Archivo, JetBrains_Mono } from "next/font/google";
+import { Fraunces, IBM_Plex_Mono, Instrument_Sans } from "next/font/google";
 import "./globals.css";
 
-const sans = Archivo({ variable: "--font-archivo", subsets: ["latin"] });
-const mono = JetBrains_Mono({ variable: "--font-jbmono", subsets: ["latin"] });
+const display = Fraunces({ variable: "--font-fraunces", subsets: ["latin"], axes: ["SOFT", "opsz"], style: ["normal", "italic"] });
+const sans = Instrument_Sans({ variable: "--font-instrument", subsets: ["latin"] });
+const mono = IBM_Plex_Mono({ variable: "--font-plex-mono", subsets: ["latin"], weight: ["400", "500", "600"] });
 
 export const metadata: Metadata = {
-  title: "SiteTab — change orders that get paid on site",
-  description: "Speak the extra work. SiteTab writes the change order, the homeowner signs, PayPal gets you paid before you leave the house.",
+  title: "Chalkline — change orders, signed and paid on site",
+  description:
+    "Say what changed in any language. Chalkline writes the change order, the homeowner signs on your phone, and PayPal pays you before you leave the house.",
 };
 
 export const viewport: Viewport = {
-  themeColor: "#1c1a17",
+  themeColor: "#f2eee6",
   width: "device-width",
   initialScale: 1,
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className={`${sans.variable} ${mono.variable} h-full antialiased`}>
+    <html lang="en" className={`${display.variable} ${sans.variable} ${mono.variable} h-full antialiased`}>
       <body className="min-h-full">{children}</body>
     </html>
   );

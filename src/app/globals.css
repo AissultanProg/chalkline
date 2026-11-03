@@ -1,50 +1,134 @@
 @import "tailwindcss";
 
-/* SiteTab — job-site palette: carpenter's paper, pencil ink, safety orange. */
+/* Chalkline — Graphite & Brass.
+   Bone paper, graphite ink, brushed brass. Serif for voice, sans for work, mono for money. */
 @theme {
-  --color-paper: #f4efe4;
-  --color-card: #fffdf8;
-  --color-ink: #1c1a17;
-  --color-muted: #6f675b;
-  --color-line: #ddd4c3;
-  --color-safety: #f0591a;
-  --color-safety-dark: #c94511;
-  --color-paid: #1f7a4d;
-  --color-warn: #a86400;
-  --color-warn-bg: #fff3dc;
+  --color-bone: #f2eee6; /* page */
+  --color-card: #fbf9f5; /* sheets */
+  --color-ink: #1f1e1c; /* graphite */
+  --color-ink-2: #2b2a27;
+  --color-muted: #77716a;
+  --color-line: #e3dccf;
+  --color-brass: #b08a4a;
+  --color-brass-deep: #8a6830;
+  --color-brass-wash: #f1e7d3;
+  --color-moss: #3f6b4e;
+  --color-moss-wash: #e3ece4;
+  --color-warn: #94570f;
+  --color-warn-wash: #f8ebd5;
 
-  --font-sans: var(--font-archivo), ui-sans-serif, system-ui, sans-serif;
-  --font-mono: var(--font-jbmono), ui-monospace, monospace;
+  --font-display: var(--font-fraunces), ui-serif, Georgia, serif;
+  --font-sans: var(--font-instrument), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, monospace;
+
+  --shadow-sheet: 0 1px 0 rgb(31 30 28 / 0.04), 0 12px 32px -18px rgb(31 30 28 / 0.28);
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
-  background: var(--color-paper);
   color: var(--color-ink);
   font-family: var(--font-sans);
-}
-
-/* Faint blueprint grid behind everything. */
-.grid-bg {
+  background-color: var(--color-bone);
+  /* Warm brass light from the top-left + fine paper grain. A photo can be layered in later via .has-photo. */
   background-image:
-    linear-gradient(var(--color-line) 1px, transparent 1px),
-    linear-gradient(90deg, var(--color-line) 1px, transparent 1px);
-  background-size: 28px 28px;
-  background-position: -1px -1px;
+    radial-gradient(1200px 600px at -10% -20%, rgb(176 138 74 / 0.14), transparent 60%),
+    radial-gradient(900px 500px at 110% 0%, rgb(31 30 28 / 0.05), transparent 60%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.12 0 0 0 0 0.11 0 0 0 0 0.1 0 0 0 .05 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-attachment: fixed;
 }
 
-@keyframes pulse-ring {
-  0% { box-shadow: 0 0 0 0 rgb(240 89 26 / 0.55); }
-  100% { box-shadow: 0 0 0 28px rgb(240 89 26 / 0); }
+::selection {
+  background: var(--color-brass-wash);
+  color: var(--color-ink);
 }
-.recording { animation: pulse-ring 1.2s ease-out infinite; }
 
+.font-display {
+  font-variation-settings: "SOFT" 60, "opsz" 96;
+  letter-spacing: -0.02em;
+}
+
+/* Tabular figures everywhere money shows up. */
+.font-mono,
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── The chalk line: a brass rule that snaps across, leaving a little chalk dust. ── */
+.chalk {
+  position: relative;
+  height: 2px;
+  background: linear-gradient(90deg, var(--color-brass-deep), var(--color-brass) 60%, rgb(176 138 74 / 0.35));
+  transform-origin: left center;
+  animation: chalk-snap 0.75s cubic-bezier(0.2, 0.9, 0.25, 1.15) both;
+}
+.chalk::after {
+  content: "";
+  position: absolute;
+  inset: -3px 0;
+  background: linear-gradient(90deg, rgb(176 138 74 / 0.35), transparent);
+  filter: blur(3px);
+  animation: chalk-dust 1.4s ease-out 0.3s both;
+}
+@keyframes chalk-snap {
+  0% { transform: scaleX(0); }
+  65% { transform: scaleX(1.015) translateY(-0.5px); }
+  80% { transform: scaleX(0.998) translateY(0.5px); }
+  100% { transform: scaleX(1); }
+}
+@keyframes chalk-dust {
+  from { opacity: 0.9; }
+  to { opacity: 0; }
+}
+
+/* Staggered entrance for sheets. Set --d for delay. */
+.rise {
+  animation: rise 0.6s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  animation-delay: var(--d, 0ms);
+}
+@keyframes rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* Recording: brass ring breathes outward. */
+@keyframes ring {
+  0% { box-shadow: 0 0 0 0 rgb(176 138 74 / 0.5), inset 0 0 0 2px var(--color-brass); }
+  100% { box-shadow: 0 0 0 30px rgb(176 138 74 / 0), inset 0 0 0 2px var(--color-brass); }
+}
+.recording { animation: ring 1.3s ease-out infinite; }
+
+/* "Paid" stamp. */
 @keyframes stamp-in {
-  0% { transform: scale(2.2) rotate(-14deg); opacity: 0; }
-  60% { transform: scale(0.94) rotate(-8deg); opacity: 1; }
-  100% { transform: scale(1) rotate(-8deg); opacity: 1; }
+  0% { transform: scale(2.1) rotate(-14deg); opacity: 0; }
+  60% { transform: scale(0.95) rotate(-7deg); opacity: 1; }
+  100% { transform: scale(1) rotate(-7deg); opacity: 1; }
 }
-.stamp { animation: stamp-in 0.45s cubic-bezier(.2,.9,.3,1.2) both; }
+.stamp { animation: stamp-in 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.2) both; }
+
+/* Sheet: the card surface used throughout. */
+.sheet {
+  background: var(--color-card);
+  border: 1px solid var(--color-line);
+  border-radius: 18px;
+  box-shadow: var(--shadow-sheet);
+}
+
+/* Inputs share one quiet style. */
+.field {
+  background: color-mix(in srgb, var(--color-bone) 55%, white);
+  border: 1px solid var(--color-line);
+  border-radius: 12px;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.field:focus {
+  border-color: var(--color-brass);
+  box-shadow: 0 0 0 3px rgb(176 138 74 / 0.18);
+}
 
 @media (prefers-reduced-motion: reduce) {
-  .recording, .stamp { animation: none; }
+  .chalk, .chalk::after, .rise, .recording, .stamp { animation: none; }
 }

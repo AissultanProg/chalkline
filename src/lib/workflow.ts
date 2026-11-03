@@ -26,7 +26,7 @@ export async function approveAndInvoice(
       jobTitle: job.title,
       summary:
         `Change order #${co.number}: ${co.title}\n\n${co.summary}\n\n` +
-        `Approved and signed by ${signer.name} on ${signedOn} (PT) via SiteTab. Signed record: ${co.id}`,
+        `Approved and signed by ${signer.name} on ${signedOn} (PT) via Chalkline. Signed record: ${co.id}`,
       items: co.items,
       homeowner: { name: job.homeownerName, email: job.homeownerEmail || process.env.PAYPAL_SANDBOX_PERSONAL_EMAIL! },
       contractor: { businessName: job.businessName, email: process.env.PAYPAL_SANDBOX_BUSINESS_EMAIL! },

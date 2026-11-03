@@ -15,7 +15,6 @@ export default async function Home() {
         title: job.title,
         scope: job.scope,
         homeowner: job.homeownerName,
-        business: job.businessName,
         rateCents: job.laborRateCents,
       }}
     />

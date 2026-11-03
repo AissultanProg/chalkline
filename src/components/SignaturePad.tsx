@@ -75,7 +75,7 @@ export default function SignaturePad({ ref, onChange }: { ref: Ref<SignaturePadH
         onPointerMove={move}
         onPointerUp={up}
         onPointerCancel={up}
-        className="h-40 w-full touch-none rounded-xl border-2 border-dashed border-line bg-white"
+        className="h-40 w-full touch-none rounded-2xl border border-dashed border-brass/50 bg-white"
         aria-label="Signature area — sign with your finger or mouse"
       />
       <div className="pointer-events-none absolute bottom-8 left-6 right-6 border-b border-ink/30" />

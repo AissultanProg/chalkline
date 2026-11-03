@@ -5,13 +5,13 @@ import { mkdirSync } from "node:fs";
 /**
  * libSQL: a local SQLite file in dev (zero setup), Turso in production (set DATABASE_URL + DATABASE_AUTH_TOKEN).
  */
-const url = process.env.DATABASE_URL ?? "file:data/sitetab.db";
+const url = process.env.DATABASE_URL ?? "file:data/chalkline.db";
 if (url.startsWith("file:")) mkdirSync("data", { recursive: true });
 
-const globalForDb = globalThis as unknown as { sitetabDb?: Client; sitetabReady?: Promise<void> };
+const globalForDb = globalThis as unknown as { chalklineDb?: Client; chalklineReady?: Promise<void> };
 
-export const db: Client = globalForDb.sitetabDb ?? createClient({ url, authToken: process.env.DATABASE_AUTH_TOKEN });
-globalForDb.sitetabDb = db;
+export const db: Client = globalForDb.chalklineDb ?? createClient({ url, authToken: process.env.DATABASE_AUTH_TOKEN });
+globalForDb.chalklineDb = db;
 
 const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS jobs (
@@ -84,6 +84,6 @@ async function migrate() {
 
 /** Await before any query; runs migrations + demo seed once per process. */
 export function ready(): Promise<void> {
-  globalForDb.sitetabReady ??= migrate();
-  return globalForDb.sitetabReady;
+  globalForDb.chalklineReady ??= migrate();
+  return globalForDb.chalklineReady;
 }
