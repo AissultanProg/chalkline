@@ -166,7 +166,7 @@ export default function ChangeOrderFlow({ job }: { job: JobInfo }) {
 
       <div className="mx-auto grid max-w-6xl gap-6 px-4 pb-16 pt-6 sm:px-6 lg:grid-cols-[300px_minmax(0,1fr)] lg:gap-14 lg:px-10 lg:pt-12 xl:grid-cols-[340px_minmax(0,1fr)]">
         {/* ── Left rail: what's happening + where you are ── */}
-        <aside className="lg:sticky lg:top-24 lg:self-start">
+        <aside className="lg:self-start lg:[@media(min-height:860px)]:sticky lg:[@media(min-height:860px)]:top-24 lg:rounded-[26px] lg:border lg:border-line/80 lg:bg-card/72 lg:p-8 lg:shadow-[var(--shadow-sheet)] lg:backdrop-blur-xl">
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-brass-deep">Change order</p>
           <h1 key={step} className="rise mt-2 font-display text-[34px] font-medium leading-[1.05] sm:text-[42px] lg:text-[46px]">
             {COPY[step].title}
@@ -234,14 +234,18 @@ export default function ChangeOrderFlow({ job }: { job: JobInfo }) {
                       </div>
                     )}
                     {mic.error && <p className="mt-2 text-sm text-warn">{mic.error}</p>}
+                    {!heard && (
+                      <p className="mt-2 text-xs text-muted">
+                        Labor is priced at your rate of {usd(job.rateCents)}/hr. Materials only at prices you say.
+                      </p>
+                    )}
                   </div>
                 </div>
               </section>
 
               <PhotoPicker photos={photos} onAdd={addPhotos} onRemove={(i) => setPhotos((p) => p.filter((_, j) => j !== i))} />
 
-              <div className="rise flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between" style={{ ["--d" as string]: "180ms" }}>
-                <p className="text-sm text-muted">Labor priced at your rate of {usd(job.rateCents)}/hr. Materials only at prices you say.</p>
+              <div className="rise flex justify-end" style={{ ["--d" as string]: "180ms" }}>
                 <PrimaryButton onClick={makeDraft} disabled={busy || transcribing || mic.recording || !memo.trim()}>
                   {busy ? "Writing it up…" : "Write the change order"}
                 </PrimaryButton>
@@ -410,7 +414,7 @@ function Stepper({ step }: { step: Step }) {
 
 function JobFacts({ job }: { job: JobInfo }) {
   return (
-    <dl className="mt-10 hidden border-t border-line pt-5 text-sm lg:block">
+    <dl className="mt-8 hidden border-t border-line pt-5 text-sm lg:block">
       {[
         ["Job", job.title],
         ["Homeowner", job.homeowner],

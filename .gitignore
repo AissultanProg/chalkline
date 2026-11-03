@@ -42,3 +42,6 @@ next-env.d.ts
 
 # local database
 /data
+
+# original design assets (optimized copies live in public/bg)
+/photosdump
