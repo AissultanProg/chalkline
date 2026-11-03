@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { compressPhoto, usd, type Photo } from "@/lib/client-utils";
 import type { Draft } from "@/lib/ai";
-import { useSpeech } from "./useSpeech";
+import { useRecorder } from "./useRecorder";
+import type { Segment, Transcript } from "@/lib/transcribe";
 
 type Item = Draft["lineItems"][number];
 type Sent = { id: string; totalCents: number; payerUrl: string | null; qr: string; status: string };
@@ -17,15 +18,12 @@ const JOB = {
   rateCents: 6500,
 };
 
-const LANGS = [
-  { code: "es-US", label: "Español" },
-  { code: "en-US", label: "English" },
-];
-
 export default function ChangeOrderFlow() {
   const [step, setStep] = useState<Step>("capture");
-  const [lang, setLang] = useState(LANGS[0].code);
   const [memo, setMemo] = useState("");
+  const [heard, setHeard] = useState<Transcript | null>(null);
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [transcribing, setTranscribing] = useState(false);
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -35,8 +33,26 @@ export default function ChangeOrderFlow() {
   const [title, setTitle] = useState("");
   const [sent, setSent] = useState<Sent | null>(null);
 
-  const appendPhrase = useCallback((t: string) => setMemo((m) => (m ? `${m} ${t}` : t)), []);
-  const speech = useSpeech(appendPhrase);
+  const onRecorded = useCallback(async (audio: Blob) => {
+    setAudioUrl(URL.createObjectURL(audio));
+    setTranscribing(true);
+    setError(null);
+    try {
+      const form = new FormData();
+      form.append("audio", audio);
+      form.append("context", `${JOB.title}. Homeowner ${JOB.homeowner}. ${JOB.scope}`);
+      const res = await fetch("/api/transcribe", { method: "POST", body: form });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Couldn't transcribe");
+      setHeard(json);
+      setMemo((m) => (m ? `${m} ${json.text}` : json.text));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setTranscribing(false);
+    }
+  }, []);
+  const mic = useRecorder(onRecorded);
 
   const total = items.reduce((s, i) => s + i.quantity * i.unitPriceCents, 0);
   const unpriced = items.some((i) => !(i.unitPriceCents > 0) || !(i.quantity > 0));
@@ -48,7 +64,7 @@ export default function ChangeOrderFlow() {
   }
 
   async function makeDraft() {
-    speech.stop();
+    mic.stop();
     setBusy(true);
     setError(null);
     try {
@@ -107,6 +123,8 @@ export default function ChangeOrderFlow() {
   function reset() {
     setStep("capture");
     setMemo("");
+    setHeard(null);
+    setAudioUrl(null);
     setPhotos([]);
     setDraft(null);
     setItems([]);
@@ -126,47 +144,56 @@ export default function ChangeOrderFlow() {
             <div className="rounded-2xl border border-line bg-card p-4 shadow-sm">
               <div className="flex items-center justify-between">
                 <h2 className="text-lg font-bold">What changed?</h2>
-                <div className="flex rounded-full border border-line p-0.5 text-sm">
-                  {LANGS.map((l) => (
-                    <button
-                      key={l.code}
-                      onClick={() => setLang(l.code)}
-                      className={`rounded-full px-3 py-1 font-semibold transition ${lang === l.code ? "bg-ink text-paper" : "text-muted"}`}
-                    >
-                      {l.label}
-                    </button>
-                  ))}
-                </div>
+                <span className="text-xs font-semibold text-muted">Any language · English · Español</span>
               </div>
 
               <div className="my-6 flex flex-col items-center gap-3">
                 <button
-                  onClick={() => (speech.listening ? speech.stop() : speech.start(lang))}
-                  aria-label={speech.listening ? "Stop recording" : "Start recording"}
-                  className={`grid size-28 place-items-center rounded-full text-white shadow-lg transition active:scale-95 ${
-                    speech.listening ? "recording bg-safety-dark" : "bg-safety hover:bg-safety-dark"
+                  onClick={() => (mic.recording ? mic.stop() : mic.start())}
+                  disabled={transcribing}
+                  aria-label={mic.recording ? "Stop recording" : "Start recording"}
+                  className={`grid size-28 place-items-center rounded-full text-white shadow-lg transition active:scale-95 disabled:opacity-60 ${
+                    mic.recording ? "recording bg-safety-dark" : "bg-safety hover:bg-safety-dark"
                   }`}
                 >
-                  {speech.listening ? <StopIcon /> : <MicIcon />}
+                  {mic.recording ? <StopIcon /> : <MicIcon />}
                 </button>
-                <p className="text-sm text-muted">
-                  {speech.listening ? "Listening… tap to stop" : "Tap and describe the extra work"}
-                </p>
+                {mic.recording ? (
+                  <div className="flex items-center gap-3">
+                    <LevelMeter level={mic.level} />
+                    <span className="font-mono text-sm">
+                      {Math.floor(mic.seconds / 60)}:{String(mic.seconds % 60).padStart(2, "0")}
+                    </span>
+                    <span className="text-sm text-muted">tap to finish</span>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted">{transcribing ? "Transcribing…" : "Tap and describe the extra work"}</p>
+                )}
               </div>
 
+              {heard && heard.segments.some((s) => s.lowConfidence) && <HeardPreview segments={heard.segments} />}
+
               <textarea
-                value={memo + (speech.interim ? ` ${speech.interim}` : "")}
+                value={memo}
                 onChange={(e) => setMemo(e.target.value)}
                 rows={4}
-                placeholder={lang.startsWith("es") ? "Ej: La señora me pidió dos repisas más en la despensa, como tres horas, ochenta en roble…" : "e.g. Homeowner asked for two extra pantry shelves, about 3 hours, $80 in oak…"}
+                placeholder="Or type it — e.g. “Homeowner asked for two extra pantry shelves, about 3 hours, $80 in oak…”"
                 className="w-full resize-none rounded-xl border border-line bg-paper/60 p-3 text-[15px] leading-relaxed outline-none focus:border-ink"
               />
-              {speech.error && <p className="mt-2 text-sm text-warn">{speech.error}</p>}
+              {heard && (
+                <div className="mt-2 flex items-center justify-between gap-2 text-xs text-muted">
+                  <span>
+                    Heard {heard.language} · {heard.durationSec}s · edit anything that&apos;s off
+                  </span>
+                  {audioUrl && <audio src={audioUrl} controls className="h-8 max-w-[55%]" />}
+                </div>
+              )}
+              {mic.error && <p className="mt-2 text-sm text-warn">{mic.error}</p>}
             </div>
 
             <PhotoPicker photos={photos} onAdd={addPhotos} onRemove={(i) => setPhotos((p) => p.filter((_, j) => j !== i))} />
 
-            <PrimaryButton onClick={makeDraft} disabled={busy || !memo.trim()}>
+            <PrimaryButton onClick={makeDraft} disabled={busy || transcribing || mic.recording || !memo.trim()}>
               {busy ? "Writing change order…" : "Write change order"}
             </PrimaryButton>
           </section>
@@ -225,6 +252,7 @@ export default function ChangeOrderFlow() {
               <summary className="cursor-pointer font-semibold">Evidence on file</summary>
               <p className="mt-2 text-muted">Original memo ({draft.detectedLanguage}):</p>
               <p className="italic">“{memo}”</p>
+              {audioUrl && <audio src={audioUrl} controls className="mt-2 h-9 w-full" />}
               {draft.detectedLanguage !== "English" && (
                 <>
                   <p className="mt-2 text-muted">Translation:</p>
@@ -303,6 +331,34 @@ function Progress({ step }: { step: Step }) {
         </li>
       ))}
     </ol>
+  );
+}
+
+function LevelMeter({ level }: { level: number }) {
+  // Five bars that light up with mic input, so the contractor knows it's hearing them.
+  return (
+    <div className="flex h-6 items-end gap-1" aria-hidden>
+      {[0.1, 0.25, 0.45, 0.65, 0.85].map((t, i) => (
+        <span
+          key={i}
+          className={`w-1.5 rounded-full transition-all duration-75 ${level > t ? "bg-safety" : "bg-line"}`}
+          style={{ height: `${30 + i * 17}%` }}
+        />
+      ))}
+    </div>
+  );
+}
+
+function HeardPreview({ segments }: { segments: Segment[] }) {
+  return (
+    <div className="mb-3 rounded-xl border border-warn/30 bg-warn-bg p-3 text-[15px] leading-relaxed">
+      <p className="mb-1 text-xs font-bold uppercase tracking-wider text-warn">Double-check the underlined part</p>
+      {segments.map((s, i) => (
+        <span key={i} className={s.lowConfidence ? "underline decoration-warn decoration-2 underline-offset-4" : ""}>
+          {s.text}{" "}
+        </span>
+      ))}
+    </div>
   );
 }
 
