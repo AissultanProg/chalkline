@@ -7,22 +7,24 @@ import { useRecorder } from "./useRecorder";
 import type { Segment, Transcript } from "@/lib/transcribe";
 
 type Item = Draft["lineItems"][number];
-type Sent = { id: string; totalCents: number; payerUrl: string | null; qr: string; status: string };
+type Sent = { id: string; number: number; totalCents: number; approvalUrl: string; qr: string };
 type Step = "capture" | "review" | "sent";
+export type JobInfo = { id: string; title: string; scope: string; homeowner: string; business: string; rateCents: number };
 
-const JOB = {
-  title: "Miller kitchen remodel",
-  scope: "Original contract: replace cabinets and countertops.",
-  homeowner: "Dana Miller",
-  business: "Reyes Carpentry",
-  rateCents: 6500,
-};
+const blobToDataUrl = (b: Blob) =>
+  new Promise<string>((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result));
+    r.onerror = reject;
+    r.readAsDataURL(b);
+  });
 
-export default function ChangeOrderFlow() {
+export default function ChangeOrderFlow({ job: JOB }: { job: JobInfo }) {
   const [step, setStep] = useState<Step>("capture");
   const [memo, setMemo] = useState("");
   const [heard, setHeard] = useState<Transcript | null>(null);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [transcribing, setTranscribing] = useState(false);
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [busy, setBusy] = useState(false);
@@ -35,6 +37,7 @@ export default function ChangeOrderFlow() {
 
   const onRecorded = useCallback(async (audio: Blob) => {
     setAudioUrl(URL.createObjectURL(audio));
+    setAudioBlob(audio);
     setTranscribing(true);
     setError(null);
     try {
@@ -51,7 +54,7 @@ export default function ChangeOrderFlow() {
     } finally {
       setTranscribing(false);
     }
-  }, []);
+  }, [JOB]);
   const mic = useRecorder(onRecorded);
 
   const total = items.reduce((s, i) => s + i.quantity * i.unitPriceCents, 0);
@@ -96,21 +99,23 @@ export default function ChangeOrderFlow() {
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch("/api/invoices", {
+      const res = await fetch("/api/change-orders", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          jobTitle: JOB.title,
-          summary: `${title}\n\n${summary}`,
-          items: items.map(({ description, quantity, unit, unitPriceCents }) => ({ description, quantity, unit, unitPriceCents })),
-          homeowner: { name: JOB.homeowner, email: "" },
-          contractor: { businessName: JOB.business, email: "" },
-          originalTranscript: draft?.detectedLanguage !== "English" ? memo : undefined,
-          originalLanguage: draft?.detectedLanguage,
+          jobId: JOB.id,
+          title,
+          summary,
+          items: items.map(({ kind, description, quantity, unit, unitPriceCents }) => ({ kind, description, quantity, unit, unitPriceCents })),
+          memoOriginal: memo,
+          memoLanguage: draft?.detectedLanguage ?? "English",
+          memoEnglish: draft?.englishTranscript ?? memo,
+          audioDataUrl: audioBlob ? await blobToDataUrl(audioBlob) : null,
+          photos: photos.map((p, i) => ({ dataUrl: p.preview, caption: draft?.photoEvidence[i] ?? "" })),
         }),
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? "PayPal couldn't create the invoice");
+      if (!res.ok) throw new Error(json.error ?? "Couldn't save the change order");
       setSent(json);
       setStep("sent");
     } catch (e) {
@@ -125,6 +130,7 @@ export default function ChangeOrderFlow() {
     setMemo("");
     setHeard(null);
     setAudioUrl(null);
+    setAudioBlob(null);
     setPhotos([]);
     setDraft(null);
     setItems([]);
@@ -135,8 +141,8 @@ export default function ChangeOrderFlow() {
   return (
     <main className="grid-bg min-h-dvh">
       <div className="mx-auto flex min-h-dvh max-w-md flex-col px-4 pb-10 pt-5">
-        <Header />
-        <JobCard />
+        <Header business={JOB.business} />
+        <JobCard job={JOB} />
         <Progress step={step} />
 
         {step === "capture" && (
@@ -273,7 +279,7 @@ export default function ChangeOrderFlow() {
             </details>
 
             <PrimaryButton onClick={send} disabled={busy || unpriced || items.length === 0}>
-              {busy ? "Creating PayPal invoice…" : `Send ${usd(total)} to ${JOB.homeowner.split(" ")[0]}`}
+              {busy ? "Saving change order…" : `Get ${JOB.homeowner.split(" ")[0]}'s signature · ${usd(total)}`}
             </PrimaryButton>
             <button onClick={() => setStep("capture")} className="text-sm font-semibold text-muted underline">
               Back to memo
@@ -281,7 +287,7 @@ export default function ChangeOrderFlow() {
           </section>
         )}
 
-        {step === "sent" && sent && <SentCard sent={sent} onNew={reset} />}
+        {step === "sent" && sent && <SentCard sent={sent} homeowner={JOB.homeowner} onNew={reset} />}
 
         {error && <p className="mt-4 rounded-xl bg-red-50 p-3 text-sm text-red-800">{error}</p>}
       </div>
@@ -291,25 +297,25 @@ export default function ChangeOrderFlow() {
 
 /* ---------------------------------------------------------------- pieces */
 
-function Header() {
+function Header({ business }: { business: string }) {
   return (
     <header className="flex items-center justify-between">
       <div className="flex items-center gap-2">
         <div className="grid size-8 place-items-center rounded-md bg-ink font-mono text-sm font-bold text-safety">ST</div>
         <span className="text-xl font-extrabold tracking-tight">SiteTab</span>
       </div>
-      <span className="font-mono text-xs text-muted">{JOB.business}</span>
+      <span className="font-mono text-xs text-muted">{business}</span>
     </header>
   );
 }
 
-function JobCard() {
+function JobCard({ job }: { job: JobInfo }) {
   return (
     <div className="mt-4 rounded-2xl bg-ink p-4 text-paper">
       <p className="text-xs uppercase tracking-wider text-paper/60">On site now</p>
-      <p className="text-lg font-bold">{JOB.title}</p>
+      <p className="text-lg font-bold">{job.title}</p>
       <p className="text-sm text-paper/70">
-        {JOB.homeowner} · {JOB.scope}
+        {job.homeowner} · {job.scope}
       </p>
     </div>
   );
@@ -442,48 +448,90 @@ function LineRow({ item, onChange, onRemove }: { item: Item; onChange: (p: Parti
   );
 }
 
-function SentCard({ sent, onNew }: { sent: Sent; onNew: () => void }) {
-  const [status, setStatus] = useState(sent.status);
-  const paid = status === "PAID" || status === "MARKED_AS_PAID";
+type Live = {
+  status: "awaiting_approval" | "approved" | "paid" | "declined";
+  signerName: string | null;
+  events: { type: string; at: string; detail: string }[];
+};
+
+const EVENT_LABEL: Record<string, string> = {
+  created: "Change order written",
+  viewed: "Homeowner opened it",
+  signed: "Signed",
+  invoice_sent: "PayPal invoice sent",
+  paid: "Paid",
+};
+
+function SentCard({ sent, homeowner, onNew }: { sent: Sent; homeowner: string; onNew: () => void }) {
+  const [live, setLive] = useState<Live>({ status: "awaiting_approval", signerName: null, events: [] });
+  const paid = live.status === "paid";
+  const first = homeowner.split(" ")[0];
 
   useEffect(() => {
     if (paid) return;
-    const t = setInterval(async () => {
-      const r = await fetch(`/api/invoices/${sent.id}`);
-      if (r.ok) setStatus((await r.json()).status);
-    }, 4000);
-    return () => clearInterval(t);
+    let alive = true;
+    const poll = async () => {
+      const r = await fetch(`/api/change-orders/${sent.id}`, { cache: "no-store" });
+      if (r.ok && alive) setLive(await r.json());
+    };
+    poll();
+    const t = setInterval(poll, 3000);
+    return () => {
+      alive = false;
+      clearInterval(t);
+    };
   }, [sent.id, paid]);
+
+  const headline =
+    live.status === "awaiting_approval"
+      ? `Hand your phone to ${first}`
+      : live.status === "approved"
+        ? `${live.signerName ?? first} signed — waiting on PayPal`
+        : "Paid via PayPal";
 
   return (
     <section className="mt-4 flex flex-col items-center gap-4">
       <div className="relative w-full rounded-2xl border border-line bg-card p-6 text-center shadow-sm">
-        <p className="text-xs font-semibold uppercase tracking-wider text-muted">{paid ? "Paid via PayPal" : "Hand your phone to the homeowner"}</p>
+        <p className="text-xs font-semibold uppercase tracking-wider text-muted">Change order #{sent.number}</p>
+        <p className="mt-1 text-lg font-bold">{headline}</p>
         <p className="mt-1 font-mono text-4xl font-bold">{usd(sent.totalCents)}</p>
 
-        <div className={`relative mx-auto mt-4 w-64 transition ${paid ? "opacity-20" : ""}`}>
+        <div className={`relative mx-auto mt-4 w-60 transition ${live.status !== "awaiting_approval" ? "opacity-15" : ""}`}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={sent.qr} alt="PayPal invoice QR code" className="w-full rounded-lg" />
+          <img src={sent.qr} alt="QR code to the change order approval page" className="w-full rounded-lg" />
         </div>
         {paid && (
           <div className="stamp absolute inset-0 grid place-items-center">
-            <span className="rounded-xl border-[6px] border-paid px-6 py-2 font-mono text-5xl font-black tracking-widest text-paid">PAID</span>
+            <span className="rounded-xl border-[6px] border-paid bg-card/70 px-6 py-2 font-mono text-5xl font-black tracking-widest text-paid">PAID</span>
           </div>
         )}
 
-        <p className="mt-4 text-sm text-muted">
-          {paid ? "Money's in your PayPal. Change order closed." : "Scan to review & pay with PayPal. Also emailed to the homeowner."}
-        </p>
-        <div className="mt-3 flex items-center justify-center gap-2 text-sm">
-          <span className={`size-2 rounded-full ${paid ? "bg-paid" : "animate-pulse bg-safety"}`} />
-          <span className="font-mono">{status}</span>
-          <span className="text-muted">· {sent.id}</span>
-        </div>
-        {sent.payerUrl && !paid && (
-          <a href={sent.payerUrl} target="_blank" rel="noreferrer" className="mt-3 inline-block text-sm font-semibold underline">
-            Open pay link
-          </a>
+        {live.status === "awaiting_approval" && (
+          <>
+            <p className="mt-4 text-sm text-muted">{first} scans to review, sign, and pay — or signs right on your phone:</p>
+            <a href={sent.approvalUrl} target="_blank" rel="noreferrer" className="mt-2 inline-block font-semibold underline">
+              Open approval page
+            </a>
+          </>
         )}
+
+        <ol className="mx-auto mt-5 flex max-w-xs flex-col gap-2 text-left text-sm">
+          {live.events.map((e, i) => (
+            <li key={i} className="flex items-center gap-2">
+              <span className={`size-2 shrink-0 rounded-full ${e.type === "paid" ? "bg-paid" : "bg-ink"}`} />
+              <span className="font-medium">{EVENT_LABEL[e.type] ?? e.type}</span>
+              <span className="ml-auto font-mono text-xs text-muted">
+                {new Date(e.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" })}
+              </span>
+            </li>
+          ))}
+          {!paid && (
+            <li className="flex items-center gap-2 text-muted">
+              <span className="size-2 shrink-0 animate-pulse rounded-full bg-safety" />
+              {live.status === "awaiting_approval" ? "Waiting for signature…" : "Waiting for payment…"}
+            </li>
+          )}
+        </ol>
       </div>
       <PrimaryButton onClick={onNew}>New change order</PrimaryButton>
     </section>

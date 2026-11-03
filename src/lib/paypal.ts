@@ -148,6 +148,27 @@ export async function sendReminder(id: string, note?: string): Promise<void> {
   });
 }
 
+// ---- Webhooks --------------------------------------------------------------
+
+/** Ask PayPal to confirm a webhook really came from PayPal (prevents forged "paid" events). */
+export async function verifyWebhook(headers: Headers, rawBody: string): Promise<boolean> {
+  const webhookId = process.env.PAYPAL_WEBHOOK_ID;
+  if (!webhookId) return false;
+  const res = await request<{ verification_status: string }>("/v1/notifications/verify-webhook-signature", {
+    method: "POST",
+    body: JSON.stringify({
+      auth_algo: headers.get("paypal-auth-algo"),
+      cert_url: headers.get("paypal-cert-url"),
+      transmission_id: headers.get("paypal-transmission-id"),
+      transmission_sig: headers.get("paypal-transmission-sig"),
+      transmission_time: headers.get("paypal-transmission-time"),
+      webhook_id: webhookId,
+      webhook_event: JSON.parse(rawBody),
+    }),
+  });
+  return res.verification_status === "SUCCESS";
+}
+
 /**
  * QR code the homeowner can scan on the contractor's phone screen.
  * PayPal returns a multipart body; we pull out the base64 PNG and return a data: URL.
