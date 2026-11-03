@@ -10,7 +10,14 @@ export async function POST(req: Request) {
   const co = (await req.json()) as ChangeOrder;
 
   if (!co?.items?.length) return Response.json({ error: "Change order has no line items" }, { status: 400 });
-  if (!co.homeowner?.email) return Response.json({ error: "Homeowner email is required" }, { status: 400 });
+  if (co.items.some((i) => !(i.unitPriceCents > 0) || !(i.quantity > 0)))
+    return Response.json({ error: "Every line needs a quantity and a price above $0" }, { status: 400 });
+
+  // Sandbox demo: when no homeowner email is given, bill the sandbox personal (buyer) account.
+  co.homeowner = {
+    name: co.homeowner?.name || "Homeowner",
+    email: co.homeowner?.email || process.env.PAYPAL_SANDBOX_PERSONAL_EMAIL!,
+  };
 
   // The invoicer must be the PayPal account that owns our API credentials.
   co.contractor = {

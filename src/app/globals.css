@@ -1,26 +1,50 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/* SiteTab — job-site palette: carpenter's paper, pencil ink, safety orange. */
+@theme {
+  --color-paper: #f4efe4;
+  --color-card: #fffdf8;
+  --color-ink: #1c1a17;
+  --color-muted: #6f675b;
+  --color-line: #ddd4c3;
+  --color-safety: #f0591a;
+  --color-safety-dark: #c94511;
+  --color-paid: #1f7a4d;
+  --color-warn: #a86400;
+  --color-warn-bg: #fff3dc;
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --font-sans: var(--font-archivo), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jbmono), ui-monospace, monospace;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+}
+
+/* Faint blueprint grid behind everything. */
+.grid-bg {
+  background-image:
+    linear-gradient(var(--color-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--color-line) 1px, transparent 1px);
+  background-size: 28px 28px;
+  background-position: -1px -1px;
+}
+
+@keyframes pulse-ring {
+  0% { box-shadow: 0 0 0 0 rgb(240 89 26 / 0.55); }
+  100% { box-shadow: 0 0 0 28px rgb(240 89 26 / 0); }
+}
+.recording { animation: pulse-ring 1.2s ease-out infinite; }
+
+@keyframes stamp-in {
+  0% { transform: scale(2.2) rotate(-14deg); opacity: 0; }
+  60% { transform: scale(0.94) rotate(-8deg); opacity: 1; }
+  100% { transform: scale(1) rotate(-8deg); opacity: 1; }
+}
+.stamp { animation: stamp-in 0.45s cubic-bezier(.2,.9,.3,1.2) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .recording, .stamp { animation: none; }
 }
