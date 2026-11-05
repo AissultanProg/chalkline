@@ -1,3 +1,4 @@
+import { rateLimit } from "@/lib/rate-limit";
 import { transcribe } from "@/lib/transcribe";
 
 export const maxDuration = 60;
@@ -5,6 +6,9 @@ const MAX_BYTES = 20 * 1024 * 1024;
 
 /** POST /api/transcribe — multipart { audio: Blob, context?: string } → transcript with confidence flags. */
 export async function POST(req: Request) {
+  const limited = rateLimit(req, "transcribe");
+  if (limited) return limited;
+
   const form = await req.formData();
   const audio = form.get("audio");
   const context = String(form.get("context") ?? "");

@@ -1,5 +1,6 @@
 import QRCode from "qrcode";
 import { originOf } from "@/lib/http";
+import { rateLimit } from "@/lib/rate-limit";
 import { createChangeOrder, getJob, type NewChangeOrder } from "@/lib/repo";
 
 const MAX_AUDIO_CHARS = 4_000_000; // ~3 MB of base64 audio
@@ -10,6 +11,9 @@ const MAX_PHOTO_CHARS = 600_000; // per photo (~450 KB JPEG)
  * Returns the homeowner's approval link + a QR code to show on the contractor's phone.
  */
 export async function POST(req: Request) {
+  const limited = rateLimit(req, "save");
+  if (limited) return limited;
+
   const body = (await req.json()) as NewChangeOrder;
 
   const job = await getJob(body.jobId);
