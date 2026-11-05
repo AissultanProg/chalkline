@@ -44,7 +44,7 @@ export async function transcribe(audio: Blob, filename: string, context: string)
   form.append("response_format", "verbose_json");
   form.append("temperature", "0");
   // Whisper's prompt is limited (~224 tokens); context first, then vocabulary.
-  form.append("prompt", `${context}. ${TRADE_VOCAB}`.slice(0, 800));
+  form.append("prompt", `${context} ${TRADE_VOCAB}`.slice(0, 800));
 
   const res = await fetch(ENDPOINT, { method: "POST", headers: { Authorization: `Bearer ${key}` }, body: form });
   if (!res.ok) throw new Error(`Transcription failed (${res.status}): ${(await res.text()).slice(0, 200)}`);

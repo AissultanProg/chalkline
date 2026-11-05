@@ -40,11 +40,11 @@ export type Extraction = z.infer<typeof ExtractionSchema>;
 export type DraftInput = {
   transcript: string;
   photos: { mediaType: "image/jpeg" | "image/png" | "image/webp"; base64: string }[];
-  jobContext: string; // e.g. "Miller kitchen remodel — original contract: cabinets + countertops"
+  jobContext: string; // e.g. "Miller kitchen remodel. Original contract: replace cabinets and countertops."
   laborRateCents: number;
 };
 
-export type Draft = Extraction & { lineItems: (LineItem & { kind: string; flagged: boolean })[] };
+export type Draft = Extraction & { lineItems: (LineItem & { kind: string })[] };
 
 const SYSTEM = `You turn a tradesperson's quick on-site voice memo (any language) into a clear change order for a homeowner.
 The memo is speech-to-text from a job site: expect filler words, slang, rough numbers, and mixed languages.
@@ -87,28 +87,18 @@ export async function draftChangeOrder(input: DraftInput): Promise<Draft> {
   return { ...x, lineItems: priceItems(x, input.laborRateCents) };
 }
 
-/** Deterministic pricing: labor at the contractor's rate, materials only at stated prices. */
+/**
+ * Deterministic pricing. A price the contractor said out loud always wins.
+ * Otherwise labor uses their hourly rate. Anything unknown is left at 0 for them to fill in.
+ */
 function priceItems(x: Extraction, laborRateCents: number) {
   return x.items.map((it) => {
-    if (it.kind === "labor") {
-      const hours = it.hours ?? 0;
-      return {
-        kind: it.kind,
-        description: it.description,
-        quantity: hours || 1,
-        unit: "HOURS" as const,
-        unitPriceCents: hours ? laborRateCents : Math.round((it.statedPriceDollars ?? 0) * 100),
-        flagged: !hours && it.statedPriceDollars == null,
-      };
+    const statedCents = it.statedPriceDollars == null ? null : Math.round(it.statedPriceDollars * 100);
+
+    if (it.kind === "labor" && statedCents == null) {
+      return { kind: it.kind, description: it.description, quantity: it.hours ?? 0, unit: "HOURS" as const, unitPriceCents: laborRateCents };
     }
-    const cents = Math.round((it.statedPriceDollars ?? 0) * 100);
-    return {
-      kind: it.kind,
-      description: it.quantity && it.quantity > 1 ? `${it.description} (×${it.quantity})` : it.description,
-      quantity: 1,
-      unit: "AMOUNT" as const,
-      unitPriceCents: cents,
-      flagged: it.statedPriceDollars == null,
-    };
+    const count = it.kind !== "labor" && it.quantity && it.quantity > 1 ? ` (×${it.quantity})` : "";
+    return { kind: it.kind, description: `${it.description}${count}`, quantity: 1, unit: "AMOUNT" as const, unitPriceCents: statedCents ?? 0 };
   });
 }

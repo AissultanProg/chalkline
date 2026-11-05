@@ -144,8 +144,13 @@ export async function getInvoice(id: string): Promise<InvoiceSummary> {
 export async function sendReminder(id: string, note?: string): Promise<void> {
   await request(`/v2/invoicing/invoices/${id}/remind`, {
     method: "POST",
-    body: JSON.stringify({ note, send_to_invoicer: false }),
+    body: JSON.stringify({ note, send_to_invoicer: false, send_to_recipient: true }),
   });
+}
+
+/** Only drafts can be deleted. */
+export async function deleteInvoice(id: string): Promise<void> {
+  await request(`/v2/invoicing/invoices/${id}`, { method: "DELETE" });
 }
 
 // ---- Webhooks --------------------------------------------------------------
@@ -175,23 +180,4 @@ export async function verifyWebhook(headers: Headers, rawBody: string): Promise<
     if (e instanceof PayPalError) return false; // PayPal rejected a malformed or forged request
     throw e;
   }
-}
-
-/**
- * QR code the homeowner can scan on the contractor's phone screen.
- * PayPal returns a multipart body; we pull out the base64 PNG and return a data: URL.
- */
-export async function getInvoiceQr(id: string, size = 400): Promise<string> {
-  const body = await request<string>(`/v2/invoicing/invoices/${id}/generate-qr-code`, {
-    method: "POST",
-    body: JSON.stringify({ width: size, height: size }),
-  });
-  const raw = typeof body === "string" ? body : JSON.stringify(body);
-  const base64 =
-    raw
-      .split(/\r?\n/)
-      .map((l) => l.trim())
-      .filter((l) => /^[A-Za-z0-9+/=]{40,}$/.test(l))
-      .join("") || raw.trim();
-  return `data:image/png;base64,${base64}`;
 }

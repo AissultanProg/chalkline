@@ -1,5 +1,6 @@
-import { verifyWebhook } from "@/lib/paypal";
-import { addEventOnce, findByInvoiceId, markPaid } from "@/lib/repo";
+import { PayPalError, verifyWebhook } from "@/lib/paypal";
+import { addEventOnce, findOrderByInvoiceId } from "@/lib/repo";
+import { syncPaymentStatus } from "@/lib/workflow";
 
 /**
  * POST /api/webhooks/paypal — PayPal pushes invoice events here (configure in the developer dashboard).
@@ -17,10 +18,16 @@ export async function POST(req: Request) {
 
   const event = JSON.parse(raw) as { event_type: string; resource?: { id?: string; invoice?: { id?: string } } };
   if (event.event_type === "INVOICING.INVOICE.PAID") {
-    const invoiceId = event.resource?.id ?? event.resource?.invoice?.id;
-    const co = invoiceId ? await findByInvoiceId(invoiceId) : null;
+    const invoiceId = event.resource?.invoice?.id ?? event.resource?.id;
+    const co = invoiceId ? await findOrderByInvoiceId(invoiceId) : null;
     if (co) {
-      await markPaid(co.id, "PayPal webhook");
+      try {
+        // PayPal also sends this event for partial and pending payments, so confirm the real status.
+        await syncPaymentStatus(co, "PayPal webhook");
+      } catch (e) {
+        if (e instanceof PayPalError) return Response.json({ error: "Try again" }, { status: 503 }); // PayPal will retry
+        throw e;
+      }
       await addEventOnce(co.id, "webhook_verified", "Signature verified with PayPal");
     }
   }

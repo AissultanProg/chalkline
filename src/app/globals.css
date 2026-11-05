@@ -7,15 +7,18 @@
   --color-card: #fbf9f5; /* sheets */
   --color-ink: #1f1e1c; /* graphite */
   --color-ink-2: #2b2a27;
-  --color-muted: #77716a;
+  --color-muted: #6b655d;
   --color-line: #e3dccf;
   --color-brass: #b08a4a;
-  --color-brass-deep: #8a6830;
+  --color-brass-deep: #806029;
   --color-brass-wash: #f1e7d3;
   --color-moss: #3f6b4e;
   --color-moss-wash: #e3ece4;
   --color-warn: #94570f;
   --color-warn-wash: #f8ebd5;
+  --color-chart-paid: #2a7d50;
+  --color-chart-owed: #b97c1c;
+  --color-chart-unsigned: #3f72c4;
 
   --font-display: var(--font-fraunces), ui-serif, Georgia, serif;
   --font-sans: var(--font-instrument), ui-sans-serif, system-ui, sans-serif;
@@ -146,6 +149,21 @@ body {
 .field:focus {
   border-color: var(--color-brass);
   box-shadow: 0 0 0 3px rgb(176 138 74 / 0.18);
+}
+
+/* iPhones zoom the whole page when a field's text is under 16px. */
+@media (max-width: 640px) {
+  .field {
+    font-size: 16px;
+  }
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-brass-deep);
+  outline-offset: 2px;
+}
+.field:focus-visible {
+  outline: none; /* .field draws its own focus ring */
 }
 
 @media (prefers-reduced-motion: reduce) {

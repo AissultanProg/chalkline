@@ -1,17 +1,17 @@
 import { PayPalError } from "@/lib/paypal";
-import { getChangeOrder, listEvents } from "@/lib/repo";
+import { getOrderSummary, listEvents } from "@/lib/repo";
 import { syncPaymentStatus } from "@/lib/workflow";
 
 /** GET /api/change-orders/:id — live status for the contractor's screen (approval → payment). */
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  let co = await getChangeOrder(id);
+  let co = await getOrderSummary(id);
   if (!co) return Response.json({ error: "Not found" }, { status: 404 });
 
   try {
-    co = await syncPaymentStatus(co);
+    if (await syncPaymentStatus(co)) co = (await getOrderSummary(id))!;
   } catch (e) {
-    // PayPal hiccup shouldn't break the status screen; webhook or next poll will catch up.
+    // A PayPal hiccup shouldn't break the status screen; the webhook or next poll will catch up.
     if (!(e instanceof PayPalError)) throw e;
   }
 

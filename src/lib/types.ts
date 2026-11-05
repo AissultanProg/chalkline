@@ -8,13 +8,11 @@ export type LineItem = {
 
 /** The structured change order the AI produces from a contractor's voice memo + photos. */
 export type ChangeOrder = {
-  jobTitle: string;
   summary: string; // plain-English scope for the homeowner
   items: LineItem[];
   homeowner: { name: string; email: string };
   contractor: { businessName: string; email: string };
   originalTranscript?: string; // what the contractor actually said (any language)
-  originalLanguage?: string;
 };
 
 export type InvoiceStatus =

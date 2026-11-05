@@ -1,11 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { compressPhoto, usd, type Photo } from "@/lib/client-utils";
+import Link from "next/link";
+import { compressPhoto, type Photo } from "@/lib/client-utils";
 import type { Draft } from "@/lib/ai";
+import { EVENT_LABEL } from "@/lib/labels";
+import { lineTotalCents, orderTotalCents, usd } from "@/lib/money";
 import type { Segment, Transcript } from "@/lib/transcribe";
+import AppHeader from "./AppHeader";
 import { useRecorder } from "./useRecorder";
-import { Wordmark } from "./Brand";
 
 type Item = Draft["lineItems"][number];
 type Sent = { id: string; number: number; totalCents: number; approvalUrl: string; qr: string };
@@ -50,44 +53,57 @@ export default function ChangeOrderFlow({ job }: { job: JobInfo }) {
   const [summary, setSummary] = useState("");
   const [title, setTitle] = useState("");
   const [sent, setSent] = useState<Sent | null>(null);
+  const lastTake = useRef(""); // the text of the latest recording, so a new take can replace it
 
   const onRecorded = useCallback(
     async (audio: Blob) => {
-      setAudioUrl(URL.createObjectURL(audio));
-      setAudioBlob(audio);
       setTranscribing(true);
       setError(null);
       try {
         const form = new FormData();
         form.append("audio", audio);
-        form.append("context", `${job.title}. Homeowner ${job.homeowner}. ${job.scope}`);
+        form.append("jobId", job.id);
         const res = await fetch("/api/transcribe", { method: "POST", body: form });
-        const json = await res.json();
+        const json = (await res.json()) as Transcript & { error?: string };
         if (!res.ok) throw new Error(json.error ?? "Couldn't transcribe");
+
+        // The saved audio must match the memo, so a new take replaces the previous take.
+        const previous = lastTake.current;
+        lastTake.current = json.text;
+        setMemo((m) => (previous && m.includes(previous) ? m.replace(previous, () => json.text) : m ? `${m} ${json.text}` : json.text));
         setHeard(json);
-        setMemo((m) => (m ? `${m} ${json.text}` : json.text));
+        setAudioBlob(audio);
+        setAudioUrl((old) => {
+          if (old) URL.revokeObjectURL(old);
+          return URL.createObjectURL(audio);
+        });
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
       } finally {
         setTranscribing(false);
       }
     },
-    [job],
+    [job.id],
   );
   const mic = useRecorder(onRecorded);
 
-  const total = items.reduce((s, i) => s + i.quantity * i.unitPriceCents, 0);
+  const total = orderTotalCents(items);
   const unpriced = items.some((i) => !(i.unitPriceCents > 0) || !(i.quantity > 0));
+  const canSend = !busy && !unpriced && items.length > 0 && title.trim().length > 0 && summary.trim().length > 0;
   const first = job.homeowner.split(" ")[0];
 
   async function addPhotos(files: FileList | null) {
     if (!files) return;
-    const next = await Promise.all([...files].slice(0, 3 - photos.length).map((f) => compressPhoto(f)));
-    setPhotos((p) => [...p, ...next].slice(0, 3));
+    setError(null);
+    try {
+      const next = await Promise.all([...files].slice(0, 3 - photos.length).map((f) => compressPhoto(f)));
+      setPhotos((p) => [...p, ...next].slice(0, 3));
+    } catch {
+      setError("Couldn't read that photo. Try a JPEG or PNG.");
+    }
   }
 
   async function makeDraft() {
-    mic.stop();
     setBusy(true);
     setError(null);
     try {
@@ -95,10 +111,9 @@ export default function ChangeOrderFlow({ job }: { job: JobInfo }) {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
+          jobId: job.id,
           transcript: memo,
           photos: photos.map(({ base64, mediaType }) => ({ base64, mediaType })),
-          jobContext: `${job.title}. ${job.scope}`,
-          laborRateCents: job.rateCents,
         }),
       });
       const json = await res.json();
@@ -151,6 +166,8 @@ export default function ChangeOrderFlow({ job }: { job: JobInfo }) {
     setStep("capture");
     setMemo("");
     setHeard(null);
+    lastTake.current = "";
+    if (audioUrl) URL.revokeObjectURL(audioUrl);
     setAudioUrl(null);
     setAudioBlob(null);
     setPhotos([]);
@@ -162,7 +179,7 @@ export default function ChangeOrderFlow({ job }: { job: JobInfo }) {
 
   return (
     <div className="min-h-dvh">
-      <TopBar job={job} />
+      <AppHeader active="new" />
 
       <div className="mx-auto grid max-w-6xl gap-6 px-4 pb-16 pt-6 sm:px-6 lg:grid-cols-[300px_minmax(0,1fr)] lg:gap-14 lg:px-10 lg:pt-12 xl:grid-cols-[340px_minmax(0,1fr)]">
         {/* ── Left rail: what's happening + where you are ── */}
@@ -174,6 +191,12 @@ export default function ChangeOrderFlow({ job }: { job: JobInfo }) {
           <div key={`chalk-${step}`} className="chalk mt-4 w-24 lg:mt-6 lg:w-40" />
           <p className="mt-4 max-w-md text-[15px] leading-relaxed text-muted lg:mt-6">{COPY[step].body}</p>
 
+          <p className="mt-4 text-sm text-muted lg:hidden">
+            <span className="font-medium text-ink">{job.title}</span> · {job.homeowner} ·{" "}
+            <Link href="/dashboard" className="font-semibold underline underline-offset-4">
+              Change
+            </Link>
+          </p>
           <Stepper step={step} />
           <JobFacts job={job} />
         </aside>
@@ -204,7 +227,7 @@ export default function ChangeOrderFlow({ job }: { job: JobInfo }) {
                           </span>
                         </div>
                       ) : (
-                        <p className="text-sm text-muted">{transcribing ? "Transcribing…" : "Tap to record"}</p>
+                        <p className="text-sm text-muted">{transcribing ? "Transcribing…" : heard ? "Tap to record again" : "Tap to record"}</p>
                       )}
                     </div>
                   </div>
@@ -223,7 +246,7 @@ export default function ChangeOrderFlow({ job }: { job: JobInfo }) {
                       onChange={(e) => setMemo(e.target.value)}
                       rows={5}
                       placeholder="“Homeowner asked for two extra pantry shelves, about three hours, eighty bucks in oak…”"
-                      className="field w-full resize-none p-3.5 text-[15px] leading-relaxed placeholder:text-muted/70"
+                      className="field w-full resize-none p-3.5 text-[15px] leading-relaxed placeholder:text-muted"
                     />
                     {heard && (
                       <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
@@ -307,7 +330,7 @@ export default function ChangeOrderFlow({ job }: { job: JobInfo }) {
                   <section className="rise self-start rounded-[18px] border border-warn/25 bg-warn-wash p-5 text-sm" style={{ ["--d" as string]: "80ms" }}>
                     <p className="font-display text-lg font-medium text-warn">Check before sending</p>
                     <ul className="mt-2 list-disc space-y-1.5 pl-5 leading-snug text-ink/80">
-                      {unpriced && <li>Some lines have no price yet. Fill them in.</li>}
+                      {unpriced && <li>Some lines are missing hours or a price. Fill them in.</li>}
                       {draft.needsClarification.map((c, i) => (
                         <li key={i}>{c}</li>
                       ))}
@@ -340,7 +363,7 @@ export default function ChangeOrderFlow({ job }: { job: JobInfo }) {
                 </section>
 
                 <div className="flex flex-col items-stretch gap-3 md:col-span-2 md:flex-row-reverse md:items-center md:justify-between 2xl:col-span-1 2xl:flex-col 2xl:items-stretch">
-                  <PrimaryButton onClick={send} disabled={busy || unpriced || items.length === 0} brass>
+                  <PrimaryButton onClick={send} disabled={!canSend} brass>
                     {busy ? "Saving…" : `Get ${first}'s signature · ${usd(total)}`}
                   </PrimaryButton>
                   <button onClick={() => setStep("capture")} className="text-sm font-semibold text-muted underline-offset-4 hover:underline">
@@ -351,7 +374,7 @@ export default function ChangeOrderFlow({ job }: { job: JobInfo }) {
             </div>
           )}
 
-          {step === "sent" && sent && <SentPanel sent={sent} homeowner={job.homeowner} onNew={reset} />}
+          {step === "sent" && sent && <SentPanel sent={sent} jobId={job.id} homeowner={job.homeowner} onNew={reset} />}
 
           {error && <p className="mt-5 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
         </main>
@@ -361,24 +384,6 @@ export default function ChangeOrderFlow({ job }: { job: JobInfo }) {
 }
 
 /* ───────────────────────────────────────────────────────────── chrome */
-
-function TopBar({ job }: { job: JobInfo }) {
-  return (
-    <header className="sticky top-0 z-20 border-b border-line/70 bg-bone/80 backdrop-blur-md">
-      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-10">
-        <Wordmark />
-        <div className="flex min-w-0 items-center gap-3">
-          <span className="hidden min-w-0 truncate text-sm text-muted sm:block">
-            <span className="font-medium text-ink">{job.title}</span> · {job.homeowner}
-          </span>
-          <span className="shrink-0 rounded-full border border-brass/40 px-2.5 py-1 font-mono text-[10px] font-medium uppercase tracking-wider text-brass-deep">
-            Sandbox
-          </span>
-        </div>
-      </div>
-    </header>
-  );
-}
 
 function Stepper({ step }: { step: Step }) {
   const steps: [Step, string, string][] = [
@@ -426,6 +431,9 @@ function JobFacts({ job }: { job: JobInfo }) {
           <dd className="text-right font-medium">{v}</dd>
         </div>
       ))}
+      <Link href="/dashboard" className="mt-2 inline-block font-semibold text-muted underline-offset-4 hover:underline">
+        Change job
+      </Link>
     </dl>
   );
 }
@@ -499,7 +507,6 @@ function PhotoPicker({ photos, onAdd, onRemove }: { photos: Photo[]; onAdd: (f: 
         ref={input}
         type="file"
         accept="image/*"
-        capture="environment"
         multiple
         hidden
         onChange={(e) => {
@@ -512,7 +519,9 @@ function PhotoPicker({ photos, onAdd, onRemove }: { photos: Photo[]; onAdd: (f: 
 }
 
 function LineRow({ item, onChange, onRemove }: { item: Item; onChange: (p: Partial<Item>) => void; onRemove: () => void }) {
-  const missing = !(item.unitPriceCents > 0);
+  const noPrice = !(item.unitPriceCents > 0);
+  const noHours = !(item.quantity > 0);
+  const flag = "!border-warn !bg-warn-wash";
   return (
     <li className="py-4">
       <div className="flex items-start gap-3">
@@ -541,10 +550,11 @@ function LineRow({ item, onChange, onRemove }: { item: Item; onChange: (p: Parti
               type="number"
               min={0}
               step={0.25}
-              value={item.quantity}
+              value={item.quantity || ""}
+              placeholder="hrs?"
               onChange={(e) => onChange({ quantity: Number(e.target.value) })}
               aria-label="Hours"
-              className="field w-20 px-2 py-1.5"
+              className={`field w-20 px-2 py-1.5 ${noHours ? flag : ""}`}
             />
             <span className="text-muted">hr ×</span>
           </>
@@ -553,14 +563,14 @@ function LineRow({ item, onChange, onRemove }: { item: Item; onChange: (p: Parti
         <input
           type="number"
           min={0}
-          step={1}
+          step={0.01}
           value={item.unitPriceCents ? item.unitPriceCents / 100 : ""}
           placeholder="price?"
           onChange={(e) => onChange({ unitPriceCents: Math.round(Number(e.target.value) * 100) })}
           aria-label="Price"
-          className={`field w-24 px-2 py-1.5 ${missing ? "!border-warn !bg-warn-wash" : ""}`}
+          className={`field w-24 px-2 py-1.5 ${noPrice ? flag : ""}`}
         />
-        <span className="ml-auto text-base font-semibold">{usd(item.quantity * item.unitPriceCents)}</span>
+        <span className="ml-auto text-base font-semibold">{usd(lineTotalCents(item))}</span>
       </div>
     </li>
   );
@@ -572,26 +582,22 @@ type Live = {
   events: { type: string; at: string; detail: string }[];
 };
 
-const EVENT_LABEL: Record<string, string> = {
-  created: "Change order written",
-  viewed: "Homeowner opened it",
-  signed: "Signed",
-  invoice_sent: "PayPal invoice sent",
-  paid: "Paid",
-  webhook_verified: "PayPal confirmed payment",
-};
-
-function SentPanel({ sent, homeowner, onNew }: { sent: Sent; homeowner: string; onNew: () => void }) {
+function SentPanel({ sent, jobId, homeowner, onNew }: { sent: Sent; jobId: string; homeowner: string; onNew: () => void }) {
   const [live, setLive] = useState<Live>({ status: "awaiting_approval", signerName: null, events: [] });
   const paid = live.status === "paid";
+  const finished = paid || live.status === "declined";
   const first = homeowner.split(" ")[0];
 
   useEffect(() => {
-    if (paid) return;
+    if (finished) return;
     let alive = true;
     const poll = async () => {
-      const r = await fetch(`/api/change-orders/${sent.id}`, { cache: "no-store" });
-      if (r.ok && alive) setLive(await r.json());
+      try {
+        const r = await fetch(`/api/change-orders/${sent.id}`, { cache: "no-store" });
+        if (r.ok && alive) setLive(await r.json());
+      } catch {
+        // Job sites lose signal. The next poll will catch up.
+      }
     };
     poll();
     const t = setInterval(poll, 3000);
@@ -599,14 +605,14 @@ function SentPanel({ sent, homeowner, onNew }: { sent: Sent; homeowner: string; 
       alive = false;
       clearInterval(t);
     };
-  }, [sent.id, paid]);
+  }, [sent.id, finished]);
 
-  const headline =
-    live.status === "awaiting_approval"
-      ? `Have ${first} scan this code`
-      : live.status === "approved"
-        ? `${live.signerName ?? first} signed. Waiting on PayPal.`
-        : "Paid in full.";
+  const headline = {
+    awaiting_approval: `Have ${first} scan this code`,
+    approved: `${live.signerName ?? first} signed. Waiting on PayPal.`,
+    paid: "Paid in full.",
+    declined: `${first} declined this change.`,
+  }[live.status];
 
   return (
     <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
@@ -646,22 +652,25 @@ function SentPanel({ sent, homeowner, onNew }: { sent: Sent; homeowner: string; 
               <span className={`mt-1 size-2.5 shrink-0 rounded-full ${e.type === "paid" ? "bg-moss" : "bg-brass"}`} />
               <span className="min-w-0 flex-1">
                 <span className="block font-medium">{EVENT_LABEL[e.type] ?? e.type}</span>
-                <span className="block truncate text-xs text-muted">{e.detail}</span>
+                <span className="block break-words text-xs text-muted">{e.detail}</span>
               </span>
               <span className="font-mono text-xs text-muted">
                 {new Date(e.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" })}
               </span>
             </li>
           ))}
-          {!paid && (
+          {!finished && (
             <li className="flex items-center gap-3 pt-5 text-sm text-muted">
               <span className="size-2.5 shrink-0 animate-pulse rounded-full bg-brass/60" />
               {live.status === "awaiting_approval" ? "Waiting for signature…" : "Waiting for payment…"}
             </li>
           )}
         </ol>
-        <div className="mt-8">
+        <div className="mt-8 flex flex-wrap items-center gap-4">
           <PrimaryButton onClick={onNew}>New change order</PrimaryButton>
+          <Link href={`/jobs/${jobId}`} className="text-sm font-semibold text-muted underline-offset-4 hover:underline">
+            See this job
+          </Link>
         </div>
       </section>
     </div>

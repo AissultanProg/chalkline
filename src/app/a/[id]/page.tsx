@@ -3,8 +3,9 @@ import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import ApprovalForm from "@/components/ApprovalForm";
 import { Wordmark } from "@/components/Brand";
-import { usd } from "@/lib/client-utils";
-import { getChangeOrder, getJob, markViewedOnce } from "@/lib/repo";
+import PaymentWatcher from "@/components/PaymentWatcher";
+import { lineTotalCents, usd } from "@/lib/money";
+import { addEventOnce, getChangeOrder, getJob, listEvents } from "@/lib/repo";
 import { syncPaymentStatus } from "@/lib/workflow";
 
 export const metadata: Metadata = { title: "Change order for your approval — Chalkline", robots: { index: false } };
@@ -12,22 +13,37 @@ export const metadata: Metadata = { title: "Change order for your approval — C
 export const instant = false;
 
 const fmt = (iso: string) =>
-  new Date(iso).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short", timeZone: "America/Los_Angeles" });
+  new Date(iso).toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: "America/Los_Angeles",
+    timeZoneName: "short",
+  });
 
 /** The homeowner's view: review the extra work, sign, then pay via PayPal. */
 export default async function ApprovalPage(props: PageProps<"/a/[id]">) {
   await connection();
   const { id } = await props.params;
-  let co = await getChangeOrder(id);
-  if (!co) notFound();
-  const job = (await getJob(co.jobId))!;
-  await markViewedOnce(co.id);
-  co = await syncPaymentStatus(co).catch(() => co!);
+  const { preview } = await props.searchParams;
+  const found = await getChangeOrder(id);
+  if (!found) notFound();
+  const job = (await getJob(found.jobId))!;
+
+  // The contractor's own preview shouldn't count as the homeowner opening it.
+  if (!preview) await addEventOnce(id, "viewed");
+
+  const justPaid = await syncPaymentStatus(found).catch(() => false);
+  const co = justPaid ? (await getChangeOrder(id))! : found;
 
   const translated = co.memoLanguage !== "English";
+  const declineReason = co.status === "declined" ? (await listEvents(id)).find((e) => e.type === "declined")?.detail : null;
 
   return (
     <main className="min-h-dvh px-4 pb-14 pt-6 sm:px-6 sm:pt-10">
+      {co.status === "approved" && <PaymentWatcher id={co.id} />}
       <div className="mx-auto max-w-2xl">
         <div className="mb-6 flex items-center justify-between">
           <Wordmark />
@@ -77,7 +93,7 @@ export default async function ApprovalPage(props: PageProps<"/a/[id]">) {
                         </p>
                       )}
                     </td>
-                    <td className="py-3.5 text-right font-mono">{usd(it.quantity * it.unitPriceCents)}</td>
+                    <td className="py-3.5 text-right font-mono">{usd(lineTotalCents(it))}</td>
                   </tr>
                 ))}
               </tbody>
@@ -120,7 +136,15 @@ export default async function ApprovalPage(props: PageProps<"/a/[id]">) {
 
             {co.status === "awaiting_approval" && <ApprovalForm id={co.id} totalCents={co.totalCents} defaultName={job.homeownerName} />}
 
-            {co.status !== "awaiting_approval" && co.signaturePng && (
+            {co.status === "declined" && (
+              <section className="rounded-2xl border border-line bg-bone/50 p-5 text-center">
+                <p className="font-display text-2xl font-medium">Declined</p>
+                <p className="mt-1 text-sm text-muted">No invoice was created. {job.businessName} has been told.</p>
+                {declineReason && declineReason !== "No reason given" && <p className="mt-3 text-sm italic">“{declineReason}”</p>}
+              </section>
+            )}
+
+            {(co.status === "approved" || co.status === "paid") && co.signaturePng && (
               <section className="flex flex-col gap-4">
                 <div className="rounded-2xl border border-line bg-white p-4">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -140,6 +164,12 @@ export default async function ApprovalPage(props: PageProps<"/a/[id]">) {
                     </a>
                     <p className="text-center text-xs text-muted">The invoice was also emailed to you, so you can pay whenever you&apos;re ready.</p>
                   </>
+                )}
+
+                {co.status === "approved" && !co.payerUrl && (
+                  <p className="rounded-2xl border border-line bg-bone/50 p-4 text-center text-sm text-muted">
+                    Your approval is saved. {job.businessName} will send the PayPal invoice shortly.
+                  </p>
                 )}
 
                 {co.status === "paid" && (

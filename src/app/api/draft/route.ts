@@ -1,36 +1,46 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { draftChangeOrder, type DraftInput } from "@/lib/ai";
+import { z } from "zod";
+import { draftChangeOrder } from "@/lib/ai";
+import { parseJson } from "@/lib/http";
 import { rateLimit } from "@/lib/rate-limit";
+import { getJob } from "@/lib/repo";
 
 export const maxDuration = 60;
-const MAX_PHOTO_CHARS = 600_000; // same per-photo limit as saving a change order
+
+const Body = z.object({
+  jobId: z.string().min(1, "Unknown job"),
+  transcript: z.string().trim().min(1, "Say or type what changed first.").max(4000, "That memo is too long."),
+  photos: z
+    .array(z.object({ mediaType: z.enum(["image/jpeg", "image/png", "image/webp"]), base64: z.string().min(1).max(900_000, "A photo is too large.") }))
+    .max(3, "Up to 3 photos.")
+    .default([]),
+});
 
 /** POST /api/draft — voice memo transcript + photos → structured, priced change order draft. */
 export async function POST(req: Request) {
   const limited = rateLimit(req, "draft");
   if (limited) return limited;
 
-  const body = (await req.json()) as DraftInput;
+  const { data, error } = await parseJson(req, Body);
+  if (error) return error;
 
-  if ((body.photos?.length ?? 0) > 3) return Response.json({ error: "Up to 3 photos." }, { status: 400 });
-  if (body.photos?.some((p) => (p.base64?.length ?? 0) > MAX_PHOTO_CHARS)) return Response.json({ error: "A photo is too large." }, { status: 413 });
-  if (!body.transcript?.trim()) return Response.json({ error: "Say or type what changed first." }, { status: 400 });
+  const job = await getJob(data.jobId);
+  if (!job) return Response.json({ error: "Unknown job" }, { status: 404 });
 
   try {
     const draft = await draftChangeOrder({
-      transcript: body.transcript.slice(0, 4000),
-      photos: body.photos ?? [],
-      jobContext: body.jobContext ?? "",
-      laborRateCents: body.laborRateCents > 0 ? body.laborRateCents : 6500,
+      transcript: data.transcript,
+      photos: data.photos,
+      jobContext: `${job.title}. ${job.scope}`,
+      laborRateCents: job.laborRateCents,
     });
     return Response.json(draft);
   } catch (e) {
-    if (e instanceof Anthropic.RateLimitError) return Response.json({ error: "AI is busy — try again in a moment." }, { status: 429 });
+    if (e instanceof Anthropic.RateLimitError) return Response.json({ error: "The AI is busy. Try again in a moment." }, { status: 429 });
     if (e instanceof Anthropic.APIError) {
       console.error("Anthropic error", e.status, e.message);
-      return Response.json({ error: "AI service error." }, { status: 502 });
+      return Response.json({ error: "The AI service had a problem. Try again." }, { status: 502 });
     }
-    const msg = e instanceof Error ? e.message : "Unknown error";
-    return Response.json({ error: msg }, { status: 500 });
+    return Response.json({ error: e instanceof Error ? e.message : "Unknown error" }, { status: 500 });
   }
 }

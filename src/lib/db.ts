@@ -54,42 +54,41 @@ const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     change_order_id TEXT NOT NULL REFERENCES change_orders(id),
-    type TEXT NOT NULL,                 -- created | viewed | signed | invoice_sent | paid | declined
+    type TEXT NOT NULL,                 -- created | viewed | signed | invoice_sent | reminder_sent | paid | webhook_verified | declined
     at TEXT NOT NULL,
     detail TEXT NOT NULL DEFAULT ''
   )`,
+  `CREATE INDEX IF NOT EXISTS idx_events_co ON events(change_order_id)`,
+];
+
+const DEMO_JOBS = [
+  ["miller-kitchen", "Miller kitchen remodel", "Original contract: replace cabinets and countertops.", "412 Alder St, Portland, OR", "Dana Miller"],
+  ["hayes-bath", "Hayes bathroom remodel", "Original contract: retile the shower and replace the vanity.", "88 Birch Ln, Portland, OR", "Sam Hayes"],
+  ["nair-deck", "Nair deck rebuild", "Original contract: replace deck boards and railing.", "1530 Ridge Rd, Beaverton, OR", "Priya Nair"],
 ];
 
 async function migrate() {
   await db.batch(SCHEMA, "write");
-  const { rows } = await db.execute("SELECT COUNT(*) AS n FROM jobs");
-  if (Number(rows[0].n) === 0) {
-    await db.execute({
-      sql: `INSERT INTO jobs (id, title, scope, address, homeowner_name, homeowner_email, business_name, labor_rate_cents, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      args: [
-        "miller-kitchen",
-        "Miller kitchen remodel",
-        "Original contract: replace cabinets and countertops.",
-        "412 Alder St, Portland, OR",
-        "Dana Miller",
-        process.env.PAYPAL_SANDBOX_PERSONAL_EMAIL ?? "",
-        "Reyes Carpentry",
-        6500,
-        new Date().toISOString(),
-      ],
-    });
-  }
 
-  // Keep the demo homeowner on the current sandbox buyer account if that setting changes.
-  const buyer = process.env.PAYPAL_SANDBOX_PERSONAL_EMAIL;
-  if (buyer) {
-    await db.execute({ sql: "UPDATE jobs SET homeowner_email = ? WHERE id = 'miller-kitchen'", args: [buyer] });
-  }
+  // Every demo homeowner bills the current sandbox buyer account, even if that setting changes later.
+  const buyer = process.env.PAYPAL_SANDBOX_PERSONAL_EMAIL ?? "";
+  const now = new Date().toISOString();
+  await db.batch(
+    DEMO_JOBS.map(([id, title, scope, address, homeowner]) => ({
+      sql: `INSERT OR IGNORE INTO jobs (id, title, scope, address, homeowner_name, homeowner_email, business_name, labor_rate_cents, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, 'Reyes Carpentry', 6500, ?)`,
+      args: [id, title, scope, address, homeowner, buyer, now],
+    })),
+    "write",
+  );
+  if (buyer) await db.execute({ sql: "UPDATE jobs SET homeowner_email = ?", args: [buyer] });
 }
 
-/** Await before any query; runs migrations + demo seed once per process. */
+/** Await before any query; runs migrations + demo seed once per process. A failed attempt is retried next time. */
 export function ready(): Promise<void> {
-  globalForDb.chalklineReady ??= migrate();
+  globalForDb.chalklineReady ??= migrate().catch((e) => {
+    globalForDb.chalklineReady = undefined;
+    throw e;
+  });
   return globalForDb.chalklineReady;
 }

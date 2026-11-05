@@ -1,24 +1,24 @@
-import { clientIp } from "@/lib/http";
+import { z } from "zod";
+import { clientIp, parseJson } from "@/lib/http";
 import { PayPalError } from "@/lib/paypal";
 import { approveAndInvoice, WorkflowError } from "@/lib/workflow";
 
-const MAX_SIGNATURE_CHARS = 300_000;
+const Body = z.object({
+  agree: z.literal(true, "Please confirm you approve the work and price."),
+  name: z.string("Please type your full name.").trim().min(2, "Please type your full name.").max(100),
+  signaturePng: z.string("Please sign in the box.").startsWith("data:image/png;base64,", "Please sign in the box.").max(300_000, "That signature is too large."),
+});
 
 /** POST /api/change-orders/:id/approve — homeowner signs; we then create + send the PayPal invoice. */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const body = (await req.json()) as { name?: string; signaturePng?: string; agree?: boolean };
-
-  const name = body.name?.trim() ?? "";
-  if (!body.agree) return Response.json({ error: "Please confirm you approve the work and price." }, { status: 400 });
-  if (name.length < 2) return Response.json({ error: "Please type your full name." }, { status: 400 });
-  if (!body.signaturePng?.startsWith("data:image/png;base64,") || body.signaturePng.length > MAX_SIGNATURE_CHARS)
-    return Response.json({ error: "Please sign in the box." }, { status: 400 });
+  const { data, error } = await parseJson(req, Body);
+  if (error) return error;
 
   try {
     const co = await approveAndInvoice(id, {
-      name: name.slice(0, 100),
-      png: body.signaturePng,
+      name: data.name,
+      png: data.signaturePng,
       ip: clientIp(req),
       agent: (req.headers.get("user-agent") ?? "").slice(0, 300),
     });
@@ -27,10 +27,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     if (e instanceof WorkflowError) return Response.json({ error: e.message }, { status: e.status });
     if (e instanceof PayPalError) {
       console.error(e.message, JSON.stringify(e.details));
-      return Response.json(
-        { error: "Your approval is saved, but PayPal didn't respond. The contractor will resend the invoice." },
-        { status: 502 },
-      );
+      return Response.json({ error: "Your approval is saved, but PayPal didn't respond. The contractor can resend the invoice." }, { status: 502 });
     }
     throw e;
   }

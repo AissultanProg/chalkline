@@ -13,13 +13,15 @@ Built for the [PayPal AI Hackathon](https://paypalaihackathon.devpost.com/).
 3. **Sign.** The homeowner scans a QR code, reviews the work on their own phone, and signs with a finger.
 4. **Pay.** Only after signing does Chalkline create and send the PayPal invoice. The homeowner pays through PayPal, and the contractor's screen updates to Paid.
 
-**No signature, no invoice.** Each change order keeps its original memo, translation, audio, photos, signature, and a time-stamped audit trail.
+**No signature, no invoice.** The homeowner can also decline, and no invoice is ever created. Each change order keeps its original memo, translation, audio, photos, signature, and a time-stamped paper trail.
+
+The **dashboard** shows what's been collected, what's owed and what's waiting on a signature, across all jobs and for each one. From there the contractor can open a change order's paper trail, send a PayPal reminder, or retry an invoice if PayPal was unavailable.
 
 ## How PayPal is used
 
 All PayPal calls use the sandbox REST APIs, in [`src/lib/paypal.ts`](src/lib/paypal.ts):
 
-- **Invoicing API v2:** create, send and read invoices. The client also includes reminder and QR code helpers.
+- **Invoicing API v2:** create, send and read invoices, and send payment reminders from the dashboard.
 - **Webhooks:** `INVOICING.INVOICE.PAID` events are checked with PayPal's signature verification API before they're trusted.
 - **Status check:** the app also asks PayPal for the invoice status, so payment still appears if a webhook is delayed or not configured.
 
@@ -74,7 +76,7 @@ Next.js 16, React 19, TypeScript, Tailwind CSS 4, libSQL.
 This is a hackathon prototype:
 
 - It runs on the PayPal sandbox only, so no real money moves.
-- It has one seeded demo job and no contractor login.
+- It has three seeded demo jobs and no contractor login, so anyone with the demo link can see the dashboard and act on demo change orders.
 - It isn't legal advice, and signatures haven't been reviewed for legal enforceability.
 
 ## License

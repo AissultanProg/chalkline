@@ -16,6 +16,7 @@ const RULES = {
   transcribe: { perVisitorPerHour: 40, totalPerDay: 500 },
   draft: { perVisitorPerHour: 30, totalPerDay: 300 },
   save: { perVisitorPerHour: 30, totalPerDay: 300 },
+  paypal: { perVisitorPerHour: 30, totalPerDay: 200 },
 } satisfies Record<string, Rule>;
 
 const windows = new Map<string, { count: number; resetAt: number }>();

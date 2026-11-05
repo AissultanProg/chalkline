@@ -2,7 +2,7 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import SignaturePad, { type SignaturePadHandle } from "./SignaturePad";
-import { usd } from "@/lib/client-utils";
+import { usd } from "@/lib/money";
 
 export default function ApprovalForm({ id, totalCents, defaultName }: { id: string; totalCents: number; defaultName: string }) {
   const router = useRouter();
@@ -12,6 +12,26 @@ export default function ApprovalForm({ id, totalCents, defaultName }: { id: stri
   const [hasInk, setHasInk] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [declining, setDeclining] = useState(false);
+  const [reason, setReason] = useState("");
+
+  async function decline() {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/change-orders/${id}/decline`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ reason }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Something went wrong");
+      router.refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      setBusy(false);
+    }
+  }
 
   async function submit() {
     setBusy(true);
@@ -23,6 +43,8 @@ export default function ApprovalForm({ id, totalCents, defaultName }: { id: stri
         body: JSON.stringify({ name, agree, signaturePng: pad.current?.toPng() }),
       });
       const json = await res.json();
+      // The signature can be saved even when PayPal fails, so show the saved state instead of the form.
+      if (res.status === 502 || res.status === 409) router.refresh();
       if (!res.ok) throw new Error(json.error ?? "Something went wrong");
       router.refresh(); // server page re-renders into the "signed — pay now" state
     } catch (e) {
@@ -66,6 +88,27 @@ export default function ApprovalForm({ id, totalCents, defaultName }: { id: stri
       <p className="text-center text-xs text-muted">
         Your signature, the time, and this device are recorded with the change order. Payment is handled securely by PayPal.
       </p>
+
+      {declining ? (
+        <div className="mt-2 flex flex-col gap-3 rounded-2xl border border-line bg-bone/50 p-4">
+          <label className="flex flex-col gap-1 text-sm font-semibold">
+            What&apos;s not right? <span className="font-normal text-muted">Optional. The contractor will see this.</span>
+            <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3} maxLength={500} className="field mt-1 resize-none p-3 text-base font-normal" />
+          </label>
+          <div className="flex flex-wrap items-center gap-4">
+            <button onClick={decline} disabled={busy} className="rounded-full bg-ink px-6 py-2.5 font-semibold text-bone transition hover:bg-ink-2 disabled:opacity-40">
+              {busy ? "Saving…" : "Decline this change"}
+            </button>
+            <button onClick={() => setDeclining(false)} disabled={busy} className="text-sm font-semibold text-muted underline">
+              Go back
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button onClick={() => setDeclining(true)} className="mx-auto mt-1 text-sm font-semibold text-muted underline">
+          Something&apos;s not right? Decline this change
+        </button>
+      )}
     </section>
   );
 }
