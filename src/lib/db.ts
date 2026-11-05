@@ -80,6 +80,12 @@ async function migrate() {
       ],
     });
   }
+
+  // Keep the demo homeowner on the current sandbox buyer account if that setting changes.
+  const buyer = process.env.PAYPAL_SANDBOX_PERSONAL_EMAIL;
+  if (buyer) {
+    await db.execute({ sql: "UPDATE jobs SET homeowner_email = ? WHERE id = 'miller-kitchen'", args: [buyer] });
+  }
 }
 
 /** Await before any query; runs migrations + demo seed once per process. */
