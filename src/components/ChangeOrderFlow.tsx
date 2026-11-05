@@ -578,6 +578,7 @@ const EVENT_LABEL: Record<string, string> = {
   signed: "Signed",
   invoice_sent: "PayPal invoice sent",
   paid: "Paid",
+  webhook_verified: "PayPal confirmed payment",
 };
 
 function SentPanel({ sent, homeowner, onNew }: { sent: Sent; homeowner: string; onNew: () => void }) {

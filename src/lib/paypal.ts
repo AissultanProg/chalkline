@@ -154,19 +154,27 @@ export async function sendReminder(id: string, note?: string): Promise<void> {
 export async function verifyWebhook(headers: Headers, rawBody: string): Promise<boolean> {
   const webhookId = process.env.PAYPAL_WEBHOOK_ID;
   if (!webhookId) return false;
-  const res = await request<{ verification_status: string }>("/v1/notifications/verify-webhook-signature", {
-    method: "POST",
-    body: JSON.stringify({
-      auth_algo: headers.get("paypal-auth-algo"),
-      cert_url: headers.get("paypal-cert-url"),
-      transmission_id: headers.get("paypal-transmission-id"),
-      transmission_sig: headers.get("paypal-transmission-sig"),
-      transmission_time: headers.get("paypal-transmission-time"),
-      webhook_id: webhookId,
-      webhook_event: JSON.parse(rawBody),
-    }),
+
+  const fields = JSON.stringify({
+    auth_algo: headers.get("paypal-auth-algo"),
+    cert_url: headers.get("paypal-cert-url"),
+    transmission_id: headers.get("paypal-transmission-id"),
+    transmission_sig: headers.get("paypal-transmission-sig"),
+    transmission_time: headers.get("paypal-transmission-time"),
+    webhook_id: webhookId,
   });
-  return res.verification_status === "SUCCESS";
+
+  try {
+    const res = await request<{ verification_status: string }>("/v1/notifications/verify-webhook-signature", {
+      method: "POST",
+      // The signature covers PayPal's exact bytes, so insert the raw event instead of re-serializing it.
+      body: `${fields.slice(0, -1)},"webhook_event":${rawBody}}`,
+    });
+    return res.verification_status === "SUCCESS";
+  } catch (e) {
+    if (e instanceof PayPalError) return false; // PayPal rejected a malformed or forged request
+    throw e;
+  }
 }
 
 /**

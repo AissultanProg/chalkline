@@ -126,6 +126,15 @@ export async function addEvent(changeOrderId: string, type: string, detail = "")
   });
 }
 
+export async function addEventOnce(changeOrderId: string, type: string, detail = "") {
+  await ready();
+  const { rows } = await db.execute({
+    sql: "SELECT 1 FROM events WHERE change_order_id = ? AND type = ? LIMIT 1",
+    args: [changeOrderId, type],
+  });
+  if (!rows.length) await addEvent(changeOrderId, type, detail);
+}
+
 export type NewChangeOrder = {
   jobId: string;
   title: string;
