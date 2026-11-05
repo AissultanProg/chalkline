@@ -31,7 +31,7 @@ const COPY: Record<Step, { title: string; body: string }> = {
   },
   sent: {
     title: "Signed on site. Paid on site.",
-    body: "The homeowner reviews and signs on your phone, then pays with PayPal. You'll see each step land here, live.",
+    body: "The homeowner scans the code, then reviews, signs and pays with PayPal on their own phone. You'll see each step land here, live.",
   },
 };
 
@@ -603,7 +603,7 @@ function SentPanel({ sent, homeowner, onNew }: { sent: Sent; homeowner: string; 
 
   const headline =
     live.status === "awaiting_approval"
-      ? `Hand your phone to ${first}`
+      ? `Have ${first} scan this code`
       : live.status === "approved"
         ? `${live.signerName ?? first} signed. Waiting on PayPal.`
         : "Paid in full.";
@@ -629,9 +629,9 @@ function SentPanel({ sent, homeowner, onNew }: { sent: Sent; homeowner: string; 
 
         {live.status === "awaiting_approval" && (
           <p className="mt-5 text-sm text-muted">
-            {first} scans to review, sign and pay, or signs right on this device.{" "}
+            {first} reviews, signs and pays on their own phone.{" "}
             <a href={sent.approvalUrl} target="_blank" rel="noreferrer" className="font-semibold text-ink underline underline-offset-4">
-              Open approval page
+              Testing on one device? Open the approval page
             </a>
           </p>
         )}

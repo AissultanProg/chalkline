@@ -10,7 +10,7 @@ Built for the [PayPal AI Hackathon](https://paypalaihackathon.devpost.com/).
 
 1. **Say it.** The contractor records a voice memo (or types one) and can add up to 3 photos.
 2. **Review.** Claude turns the memo into a change order with an English summary for the homeowner. The contractor can edit everything.
-3. **Sign.** The homeowner opens the approval page by QR code or on the contractor's device, reviews the work, and signs with a finger.
+3. **Sign.** The homeowner scans a QR code, reviews the work on their own phone, and signs with a finger.
 4. **Pay.** Only after signing does Chalkline create and send the PayPal invoice. The homeowner pays through PayPal, and the contractor's screen updates to Paid.
 
 **No signature, no invoice.** Each change order keeps its original memo, translation, audio, photos, signature, and a time-stamped audit trail.
